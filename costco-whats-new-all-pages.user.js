@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         Costco TW 分類頁抓全部分頁合併顯示
+// @name         Costco TW 分類頁/搜尋頁抓全部分頁合併顯示
 // @namespace    costco-tw-merge-pages
-// @version      1.0
-// @description  在 Costco 台灣分類頁 (如 /c/whats-new) 加一顆按鈕，自動抓取該分類所有分頁的商品，合併成單一清單顯示，不用手動翻頁。
+// @version      1.1
+// @description  在 Costco 台灣分類頁 (如 /c/whats-new) 或搜尋結果頁 (如 /search?text=xxx) 加一顆按鈕，自動抓取所有分頁的商品，合併成單一清單顯示，不用手動翻頁。
 // @author       you
 // @match        https://www.costco.com.tw/c/*
 // @match        https://www.costco.com.tw/*/c/*
+// @match        https://www.costco.com.tw/search*
 // @icon         https://www.costco.com.tw/favicon.ico
 // @grant        none
 // @run-at       document-idle
@@ -31,11 +32,18 @@
       query: query || '',
       pageSize: String(PAGE_SIZE),
       currentPage: String(currentPage),
-      category: categoryCode,
       lang: 'zh_TW',
       curr: 'TWD',
     });
+    if (categoryCode) params.set('category', categoryCode);
     return 'https://www.costco.com.tw/rest/v2/taiwan/products/search?' + params.toString();
+  }
+
+  function getModeFromUrl(url) {
+    if (url.pathname === '/search' || url.pathname.startsWith('/search/')) {
+      return { categoryCode: null, query: url.searchParams.get('text') || '' };
+    }
+    return { categoryCode: getCategoryCode(url.pathname), query: url.searchParams.get('q') || '' };
   }
 
   function pickImage(images) {
@@ -187,8 +195,7 @@
       }
 
       const url = new URL(location.href);
-      const categoryCode = getCategoryCode(url.pathname);
-      const query = url.searchParams.get('q') || '';
+      const { categoryCode, query } = getModeFromUrl(url);
 
       status.textContent = '載入中... (1 / ?)';
       grid.innerHTML = '';
