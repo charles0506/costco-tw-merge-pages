@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Daybuy Costco專區 抓全部分頁/整理成圖片
 // @namespace    costco-tw-merge-pages
-// @version      1.1
+// @version      1.2
 // @description  在 daybuy.tw 的 Costco 分類列表頁 (如 /costco/hypermarket-news/) 加按鈕，用 WordPress REST API 抓該分類全部分頁文章合併顯示；在單篇文章頁 (如 /costco/267919/) 則解析文章內的「圖片+商品連結」清單，整理成圖片卡片牆。
 // @author       you
 // @match        https://www.daybuy.tw/costco/*
@@ -136,6 +136,18 @@
     return r.json();
   }
 
+  function classifyParagraph(p) {
+    const img = p.querySelector('img');
+    const a = p.querySelector('a');
+    // 格式二：<a><img>商品名</a> - 日期 價格... 全部包在同一個 <p>
+    if (a && img && a.contains(img)) return 'combined';
+    // 格式一：圖片獨立一個 <p>
+    if (img && !a && p.children.length === 1) return 'onlyImg';
+    // 格式一：商品連結獨立一個 <p>，緊接在圖片後面
+    if (a && !img && p.children.length === 1 && a.parentElement === p && p.textContent.trim() === a.textContent.trim()) return 'onlyA';
+    return 'other';
+  }
+
   function parseArticleEntries(html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const ps = Array.from(doc.body.children).filter((el) => el.tagName === 'P');
@@ -143,22 +155,29 @@
     let pendingImg = null;
 
     for (const p of ps) {
-      const img = p.querySelector('img');
-      const a = p.querySelector('a');
-      const onlyImg = img && !a && p.children.length === 1;
-      const onlyA = a && !img && p.children.length === 1 && a.parentElement === p && p.textContent.trim() === a.textContent.trim();
+      const kind = classifyParagraph(p);
 
-      if (onlyImg) {
-        pendingImg = img.getAttribute('src');
+      if (kind === 'onlyImg') {
+        pendingImg = p.querySelector('img').getAttribute('src');
         continue;
       }
-      if (onlyA) {
+      if (kind === 'onlyA') {
+        const a = p.querySelector('a');
         entries.push({ type: 'item', img: pendingImg, name: a.textContent.trim(), href: a.href });
         pendingImg = null;
         continue;
       }
+      if (kind === 'combined') {
+        const img = p.querySelector('img');
+        const a = p.querySelector('a');
+        const name = a.textContent.trim();
+        const extra = p.textContent.replace(a.textContent, '').trim().replace(/^[–—-]+/, '').trim();
+        entries.push({ type: 'item', img: img.getAttribute('src'), name, href: a.href, extra });
+        pendingImg = null;
+        continue;
+      }
       const text = p.textContent.trim();
-      const isSectionHeader = !img && !a && text.length > 0 && text.length < 30 && (p.querySelector('span[style]') || p.querySelector('strong'));
+      const isSectionHeader = !p.querySelector('img') && !p.querySelector('a') && text.length > 0 && text.length < 30 && (p.querySelector('span[style]') || p.querySelector('strong'));
       if (isSectionHeader) {
         entries.push({ type: 'section', text: text.replace(/[—\-–]+/g, '').trim() });
         pendingImg = null;
@@ -197,6 +216,14 @@
 
       a.appendChild(img);
       a.appendChild(name);
+
+      if (entry.extra) {
+        const extra = document.createElement('div');
+        extra.className = 'cmp-date';
+        extra.textContent = entry.extra;
+        a.appendChild(extra);
+      }
+
       frag.appendChild(a);
     }
     grid.appendChild(frag);
