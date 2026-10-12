@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Costco TW 分類頁/搜尋頁抓全部分頁合併顯示
 // @namespace    costco-tw-merge-pages
-// @version      1.1
+// @version      1.2
 // @description  在 Costco 台灣分類頁 (如 /c/whats-new) 或搜尋結果頁 (如 /search?text=xxx) 加一顆按鈕，自動抓取所有分頁的商品，合併成單一清單顯示，不用手動翻頁。
 // @author       you
 // @match        https://www.costco.com.tw/c/*
@@ -18,6 +18,7 @@
   'use strict';
 
   const PAGE_SIZE = 100;
+  const MAX_ITEMS = 500; // 超過此數量就不抓，需要的話自行調大
 
   function getCategoryCode(pathname) {
     const parts = pathname.split('/').filter(Boolean);
@@ -57,6 +58,7 @@
     const first = await fetch(buildApiUrl(categoryCode, query, 0)).then((r) => r.json());
     const totalPages = first.pagination ? first.pagination.totalPages : 1;
     const totalResults = first.pagination ? first.pagination.totalResults : first.products.length;
+    if (totalResults > MAX_ITEMS) return { tooMany: true, totalResults };
     let all = first.products.slice();
     onProgress(1, totalPages, all.length, totalResults);
 
@@ -205,6 +207,11 @@
           status.textContent = `載入中... 第 ${done}/${total} 頁，已取得 ${count}/${totalResults} 項`;
           title.textContent = `合併商品清單（載入中）`;
         });
+        if (products.tooMany) {
+          title.textContent = '合併商品清單';
+          status.textContent = `共 ${products.totalResults} 項，超過上限 ${MAX_ITEMS} 項，不抓取（可調整腳本內 MAX_ITEMS）`;
+          return;
+        }
         cache = products;
         title.textContent = `合併商品清單（共 ${products.length} 項）`;
         status.textContent = `完成，共 ${products.length} 項`;

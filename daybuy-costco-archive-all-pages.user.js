@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Daybuy Costco專區 抓全部分頁/整理成圖片
 // @namespace    costco-tw-merge-pages
-// @version      1.2
+// @version      1.3
 // @description  在 daybuy.tw 的 Costco 分類列表頁 (如 /costco/hypermarket-news/) 加按鈕，用 WordPress REST API 抓該分類全部分頁文章合併顯示；在單篇文章頁 (如 /costco/267919/) 則解析文章內的「圖片+商品連結」清單，整理成圖片卡片牆。
 // @author       you
 // @match        https://www.daybuy.tw/costco/*
@@ -16,6 +16,7 @@
   'use strict';
 
   const PER_PAGE = 100;
+  const MAX_ITEMS = 500; // 分類文章數超過此數量就不抓，需要的話自行調大
 
   function trimPageSuffix(parts) {
     if (parts.length >= 2 && parts[parts.length - 2] === 'page' && /^\d+$/.test(parts[parts.length - 1])) {
@@ -80,6 +81,7 @@
     const first = await firstRes.json();
     const totalPages = parseInt(firstRes.headers.get('X-WP-TotalPages') || '1', 10);
     const totalResults = parseInt(firstRes.headers.get('X-WP-Total') || String(first.length), 10);
+    if (totalResults > MAX_ITEMS) return { tooMany: true, totalResults };
     let all = first.slice();
     onProgress(1, totalPages, all.length, totalResults);
 
@@ -328,6 +330,11 @@
             status.textContent = `載入中... 第 ${done}/${total} 頁，已取得 ${count}/${totalResults} 篇`;
             title.textContent = `合併文章清單（載入中）`;
           });
+          if (posts.tooMany) {
+            title.textContent = '合併文章清單';
+            status.textContent = `共 ${posts.totalResults} 篇，超過上限 ${MAX_ITEMS} 篇，不抓取（可調整腳本內 MAX_ITEMS）`;
+            return;
+          }
           cache = posts;
           title.textContent = `合併文章清單（共 ${posts.length} 篇）`;
           status.textContent = `完成，共 ${posts.length} 篇`;
